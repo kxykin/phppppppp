@@ -1,0 +1,111 @@
+<?php
+
+require_once('vendor/autoload.php');
+
+use setasign\Fpdi\Fpdi;
+
+class AssinaturaDigital {
+    
+    private $documento;
+    private $chavePrivada;
+    
+    public function __construct($documento, $chavePrivada) {
+        $this->documento = $documento;
+        $this->chavePrivada = $chavePrivada;
+    }
+    
+    public function assinarCAdES() {
+        if (!file_exists($this->documento)) {
+            throw new Exception('O arquivo PDF especificado não existe.');
+        }
+        
+        $assinatura = 'kaykyyy';
+        openssl_sign(file_get_contents($this->documento), $assinatura, $this->chavePrivada, OPENSSL_ALGO_SHA256);
+        return base64_encode($assinatura);
+    }
+    
+    public function assinarPAdES($assinatura) {
+        if (!file_exists($this->documento)) {
+            throw new Exception('O arquivo PDF especificado não existe.');
+        }
+        
+        $pdf = new FPDI();
+        $qtdPaginas = $pdf->setSourceFile($this->documento);
+        
+        for ($pagina = 1; $pagina <= $qtdPaginas; $pagina++) {
+            $pdf->AddPage();
+            $tplIdx = $pdf->importPage($pagina);
+            $pdf->useTemplate($tplIdx, 10, 10, 10, 10, true);
+        }
+        
+        // Decodificar a imagem base64
+        $assinatura_decodificada = base64_decode($assinatura);
+        
+        // Verificar se é uma imagem válida e obter suas dimensões
+        $info_imagem = getimagesizefromstring($assinatura_decodificada);
+
+        var_dump($assinatura_decodificada);
+        // Verificar se o formato da imagem é válido (PNG, JPEG, GIF, etc.)
+        if ($info_imagem !== false) {
+            $formato_imagem = $info_imagem['mime']; // Obter o tipo de MIME da imagem
+            if ($formato_imagem == 'image/png' || $formato_imagem == 'image/jpeg' || $formato_imagem == 'image/gif') {
+                // É um formato de imagem válido, você pode prosseguir com a adição da imagem ao PDF
+                $pdf->Image('data:' . $formato_imagem . ';base64,' . $assinatura, 10, 10, 50, 20, $formato_imagem);
+
+            } else {
+                // Formato de imagem inválido
+                throw new Exception('Formato de imagem inválido. Apenas formatos PNG, JPEG e GIF são suportados.');
+            }
+        } else {
+            // Não é uma imagem válida
+            throw new Exception('A entrada fornecida não é uma imagem válida.');
+        }
+        
+        $pdf->Output('documento_assinado.pdf', 'F');
+    }
+}
+
+// Uso
+$documentoPDF = 'C:\xampp\htdocs\pades\documento.pdf';
+
+// Especificando a chave privada como uma string
+$chavePrivadaString = <<<EOD
+-----BEGIN PRIVATE KEY-----
+MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDTH/5Sqla19gmX
+v/8fEGrjkKqsSFmZ6Q6CrY9SW79puUZW9NAW3+HNrOG9LPEnr9RirzGoOcoWWkS4
+tjCx6WzR4OtYORtyg9xBLQXS9j8x4VI0jzfOFBwk+fUnOeoML2VwhbiEOy7BmQHD
+SLgJqBT+9dmQJUeIi0ko2LNr0sRakHerKfiWFRWIT2EIS7+6SzHLrI7I/YiKkASY
+m2yyclLYOesEj/tHee44EDRCrFFDdZzvZ+e59ZZcvPH5uMNsZc3e1fBDJ0MS7PAK
+eCIS4PvDs0KqxviCl2FqE36kv/Wu/Soj7zXkwW8Rq2VmSsPapoLObJzr2OgHSSwO
+6jWth7yFAgMBAAECggEABy2Oc9i3E6mr9X0BcK4aDDxLaTRug2/r3oqFwGrpIkWP
+0X4HoyIf0bfVLEgzt2yKyoN4AJGyarnNSKsSaGzDa+FQmb0bT0nnZPnhuaSbTRgC
+4lGU4qHxZlpvONMHFOdO9MPpxukiM6fUP65LFNz3lcbdtkEQ4mC7RIhq6o64aUxx
+6p7yPwLZ8pA4u0is5LPebVDa/c1Bpd3E0/pR0hrxKh2l8AedDk6Yo0lLLmzR8cF/
+Hg09HsuD3S70/S/7QYVsy8jFsQCTSDJRdONNHHZHfhK+uE0pClzBgF3WQvEczD8u
+9S/JN3AEM6tj1njAsxR5rgsRbo3RLMWfZ6y4U99ZgwKBgQD8zrFRJS9bUKJ20TOh
+o+S8CkpzZO2v4KD+8QB389sWID14K9TIfTpcHnrwG+w0hpJb87PF0NORPO1yYIYx
+lH+LC+GnOIg10pWEEmM05ecg+zWKwSbq579qEtijHmQlhs4v1TkmekTVO4JTGLAS
+4DNYlb8rQ+kmrbJ/1Cb7BbQ3RwKBgQDVyotvZb3YYvh2E8aBFOBibqWvn2UGoDwc
+pKiYDcxYE13QYxgszjuh5Ft6msDpkEchGE8t842s4g6hm/VWopGHkDGaPTNsEGGm
+FMGSayVAQBYSGRbyaTbYSViyHL+br7OZC+43LnKbv82in8ywMXuFsWa2FGeoY4zP
+Wj98OsDr0wKBgQCJL/DxQ+iK+Rrwt135XWMG197G+AIz6wXy0v2aGm7NdvlkeQSj
+N7Gvw6qbGcv4RP6vf3QS6NumeRWxd8fap+b+oZf2kqr36irQ3NmRHyFpuGi5v09L
+Mi+hdFCzVA6sfpbtRhwZUUiBHiX+yerik1/Jtpli9RtUrfWrgIkWt2WwiQKBgQCC
+OY4VnPO3CxItWn5fwkerrZpfD8iJ8LCtAd9wP3dpbuKGPNZM9JJ+Wosec4Vuv+OT
+1Srl4qU52bjv1//pdb0PxlVwjjb0bEYO1DXU6k8Wg/Ltszq3Dj/KH2NXmwtb2fqc
+DxhbpH9LP9oSZSRZbsq+9QCLiIJbn8f1xhNFqMQ64QKBgQDcTeTk53YAJSQ7iVtu
+08HDspQjYdxk8kTELhumfUGHw49jWpb1c9VziyETrKFT0de04jn8aVAzU7zTjO+9
+47MPt+pIR35DQ2GlX/UOp1eA9egi8mFB1EhFDfhVn7aHNchaO6jSAnJMb8saWi9o
+vwyzFYTpooFg+JsgkXcXrmyu8Q==
+-----END PRIVATE KEY-----
+EOD;
+
+$assinaturaDigital = new AssinaturaDigital($documentoPDF, $chavePrivadaString);
+try {
+    $assinatura = $assinaturaDigital->assinarCAdES();
+    $assinaturaDigital->assinarPAdES($assinatura);
+    echo 'Assinatura adicionada com sucesso!';
+} catch (Exception $e) {
+    echo 'Ocorreu um erro: ' . $e->getMessage();
+}
+?>
